@@ -63,7 +63,6 @@ jobs:
         id: run-test
         env:
           # Force local execution and disable Kubernetes autodetection
-          PAPERMILL_ENGINE: local
           TRAINER_BACKEND: local
           KUBERNETES_SERVICE_HOST: ""
         run: |
@@ -84,8 +83,6 @@ jobs:
           # Execute the notebook using Papermill in local mode
           $PAPERMILL_BIN "$NOTEBOOK_INPUT" "$NOTEBOOK_OUTPUT" \
             --kernel "sdk-test-kernel" \
-            --parameters timeout "$TIMEOUT_SECONDS" \
-            --engine local \
             --log-output \
             --log-level INFO
 
