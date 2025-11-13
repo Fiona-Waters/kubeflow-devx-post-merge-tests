@@ -6,28 +6,24 @@ on:
 
 jobs:
   run-notebook-test:
-    # 🚨 UPDATE 5: Replace 'ubuntu-latest' with your custom runner label if needed. 
-    # If testing on standard GitHub runners, use 'ubuntu-latest'.
     runs-on: ubuntu-latest 
     permissions:
-      contents: write # Needed to upload the executed notebook artifact
+      contents: write 
     
     steps:
       - name: Checkout SDK PR Code
         uses: actions/checkout@v4
         with:
-          # This pulls the code from your SDK fork (jdoe/sdk-repo)
           repository: ${{ github.event.client_payload.sdk_repo }}
           ref: ${{ github.event.client_payload.sdk_sha }}
-          path: sdk-repo 
+          path: sdk-repo # Checkout the SDK code into a subdirectory
 
       - name: Checkout Training Operator Repo (Test Asset)
         uses: actions/checkout@v4
         with:
-          # This pulls the notebook from your Training Operator fork
-          repository: ${{ github.event.client_payload.training_operator_repo_owner }}/${{ github.event.client_payload.training_operator_repo_name }}
-          ref: ${{ github.event.client_payload.training_operator_ref }}
-          path: training-operator-repo 
+          repository: opendatahub-io/trainer
+          ref: main
+          path: training-operator-repo # Checkout the Training Operator code into a subdirectory
           
       # --- Test Environment Setup ---
       - name: Set up Python 3.9
@@ -40,41 +36,61 @@ jobs:
         run: |
           echo "Installing tools and dependencies..."
           
-          # 1. Install Poetry and Papermill tools
-          pip install poetry
+          # 1. Install Papermill and core execution tools
           pip install papermill==2.6.0 jupyter==1.1.1 ipykernel==6.29.5
+          
+          # 2. Install main dependencies (Manually listed from pyproject.toml [project.dependencies])
+          # This ensures the SDK's environment is fully configured.
+          echo "Installing main SDK dependencies..."
+          pip install kubernetes>=27.2.0 pydantic>=2.10.0 kubeflow-trainer-api>=2.0.0 kubeflow-katib-api>=0.19.0
 
-          # 2. Install SDK dependencies (from the PR code)
+          # 3. Install the SDK Code itself in editable mode
+          # '-e .' installs the package from pyproject.toml in editable mode.
+          # '[dev]' ensures optional dev dependencies are also installed.
           cd sdk-repo
-          poetry install -r --with dev
+          echo "Installing SDK PR code in editable mode..."
+          # This command reads the dependencies from pyproject.toml and installs them.
+          pip install -e .[dev] 
           
-          # Get VENV path for later use
-          POETRY_VENV_PATH=$(poetry env info --path)
+          # 4. Configure Notebook Kernel
+          PYTHON_BIN=$(which python)
+          $PYTHON_BIN -m ipykernel install --user --name=sdk-test-kernel --display-name "Python (SDK Test)"
           
-          # 3. Configure Notebook Kernel for Papermill
-          $POETRY_VENV_PATH/bin/python -m ipykernel install --user --name=sdk-test-kernel --display-name "Python (SDK Test)"
-          
+          cd .. 
           mkdir -p artifacts/notebooks # Create artifact directory
 
-      - name: Run E2E Notebook Test with Papermill
+      - name: Run E2E Notebook Test with Papermill (Local)
         id: run-test
+        env:
+          # Force local execution and disable Kubernetes autodetection
+          PAPERMILL_ENGINE: local
+          TRAINER_BACKEND: local
+          KUBERNETES_SERVICE_HOST: ""
         run: |
-          POETRY_VENV_PATH=$(cd sdk-repo && poetry env info --path)
-          PAPERMILL_BIN="$POETRY_VENV_PATH/bin/papermill"
+          # Use the python executable where Papermill was installed
+          PAPERMILL_BIN=$(which papermill)
+          echo "Using Papermill from: $PAPERMILL_BIN"
 
-          # 🚨 UPDATE 6: Update the path below to the exact location of your E2E notebook
-          NOTEBOOK_INPUT="opendatahub-io/training-operator/examples/pytorch/image-classification/mnist.ipynb" 
+          # Set the notebook paths
+          NOTEBOOK_INPUT="trainer/examples/pytorch/image-classification/mnist.ipynb"
           NOTEBOOK_OUTPUT="artifacts/notebooks/sdk-pr-test-output.ipynb"
           TIMEOUT_SECONDS=900 
-          
-          echo "Executing notebook for SDK commit: ${{ github.event.client_payload.sdk_sha }}"
-          
-          $PAPERMILL_BIN $NOTEBOOK_INPUT $NOTEBOOK_OUTPUT \
+
+          echo "Executing notebook: $NOTEBOOK_INPUT"
+
+          # Ensure the output directory exists
+          mkdir -p "$(dirname "$NOTEBOOK_OUTPUT")"
+
+          # Execute the notebook using Papermill in local mode
+          $PAPERMILL_BIN "$NOTEBOOK_INPUT" "$NOTEBOOK_OUTPUT" \
             --kernel "sdk-test-kernel" \
-            --parameters timeout $TIMEOUT_SECONDS \
+            --parameters timeout "$TIMEOUT_SECONDS" \
+            --engine local \
+            --log-output \
             --log-level INFO
-          
-          echo "Notebook test execution finished."
+
+          echo " Notebook test execution finished successfully."
+
 
       - name: Upload Executed Notebook Artifact
         uses: actions/upload-artifact@v5
