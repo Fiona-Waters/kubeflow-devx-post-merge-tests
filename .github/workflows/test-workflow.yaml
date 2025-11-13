@@ -21,8 +21,8 @@ jobs:
       - name: Checkout Training Operator Repo (Test Asset)
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.client_payload.training_operator_repo_owner }}/${{ github.event.client_payload.training_operator_repo_name }}
-          ref: ${{ github.event.client_payload.training_operator_ref }}
+          repository: opendatahub-io/trainer
+          ref: main
           path: training-operator-repo # Checkout the Training Operator code into a subdirectory
           
       # --- Test Environment Setup ---
@@ -59,28 +59,38 @@ jobs:
           cd .. 
           mkdir -p artifacts/notebooks # Create artifact directory
 
-      - name: Run E2E Notebook Test with Papermill
+      - name: Run E2E Notebook Test with Papermill (Local)
         id: run-test
+        env:
+          # Force local execution and disable Kubernetes autodetection
+          PAPERMILL_ENGINE: local
+          TRAINER_BACKEND: local
+          KUBERNETES_SERVICE_HOST: ""
         run: |
           # Use the python executable where Papermill was installed
           PAPERMILL_BIN=$(which papermill)
-
           echo "Using Papermill from: $PAPERMILL_BIN"
-          
-          # Set the notebook path
-          NOTEBOOK_INPUT="training-operator-repo/examples/pytorch/image-classification/mnist.ipynb" 
+
+          # Set the notebook paths
+          NOTEBOOK_INPUT="training-operator/examples/pytorch/image-classification/mnist.ipynb"
           NOTEBOOK_OUTPUT="artifacts/notebooks/sdk-pr-test-output.ipynb"
           TIMEOUT_SECONDS=900 
-          
+
           echo "Executing notebook: $NOTEBOOK_INPUT"
-          
-          # Execute the notebook using the configured kernel
-          $PAPERMILL_BIN $NOTEBOOK_INPUT $NOTEBOOK_OUTPUT \
+
+          # Ensure the output directory exists
+          mkdir -p "$(dirname "$NOTEBOOK_OUTPUT")"
+
+          # Execute the notebook using Papermill in local mode
+          $PAPERMILL_BIN "$NOTEBOOK_INPUT" "$NOTEBOOK_OUTPUT" \
             --kernel "sdk-test-kernel" \
-            --parameters timeout $TIMEOUT_SECONDS \
+            --parameters timeout "$TIMEOUT_SECONDS" \
+            --engine local \
+            --log-output \
             --log-level INFO
-          
-          echo "Notebook test execution finished."
+
+          echo " Notebook test execution finished successfully."
+
 
       - name: Upload Executed Notebook Artifact
         uses: actions/upload-artifact@v5
