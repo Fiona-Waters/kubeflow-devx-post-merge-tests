@@ -72,7 +72,7 @@ jobs:
           echo "Using Papermill from: $PAPERMILL_BIN"
 
           # Set the notebook paths
-          NOTEBOOK_INPUT="trainer/examples/pytorch/image-classification/mnist.ipynb"
+          NOTEBOOK_INPUT="opendatahub-io/trainer/examples/pytorch/image-classification/mnist.ipynb"
           NOTEBOOK_OUTPUT="artifacts/notebooks/sdk-pr-test-output.ipynb"
           TIMEOUT_SECONDS=900 
 
