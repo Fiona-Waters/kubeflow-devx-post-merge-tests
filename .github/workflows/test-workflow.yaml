@@ -42,13 +42,13 @@ jobs:
         run: |
           echo "Installing Kubeflow Trainer..."
 
-          # Install the Trainer using kubectl
-          kubectl apply -k "github.com/opendatahub-io/trainer/manifests/overlays/standalone"
+          # Install the Trainer using kubectl from base manifests
+          kubectl apply -k "github.com/kubeflow/trainer/manifests/base?ref=master"
 
-          # Wait for the Trainer deployment to be ready
+          # Wait for the trainer deployment to be ready
           echo "Waiting for Trainer to be ready..."
           kubectl wait --for=condition=available --timeout=300s \
-            deployment/training-operator -n kubeflow
+            deployment/trainer -n kubeflow
 
           # Verify installation
           echo "Verifying Trainer installation..."
