@@ -26,6 +26,23 @@ jobs:
           path: trainer-repo # Checkout the Trainer code into a subdirectory
 
       # --- Kubernetes Cluster Setup ---
+      - name: Free up disk space
+        run: |
+          echo "Available disk space before cleanup:"
+          df -h
+
+          # Remove unnecessary packages and files to free up space
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+
+          # Clean up Docker
+          docker system prune -af
+
+          echo "Available disk space after cleanup:"
+          df -h
+
       - name: Set up Kind Kubernetes Cluster
         uses: helm/kind-action@v1
         with:
@@ -42,8 +59,12 @@ jobs:
         run: |
           echo "Installing Kubeflow Trainer..."
 
-          # Install the Trainer using kubectl with server-side apply to handle large CRDs
+          # Install the Trainer manager using kubectl with server-side apply to handle large CRDs
           kubectl apply --server-side -k "github.com/kubeflow/trainer/manifests/overlays/manager?ref=master"
+
+          # Install the default training runtimes
+          echo "Installing Trainer runtimes..."
+          kubectl apply --server-side -k "github.com/kubeflow/trainer/manifests/overlays/runtimes?ref=master"
 
           # Wait for the trainer deployment to be ready
           echo "Waiting for Trainer to be ready..."
@@ -54,6 +75,10 @@ jobs:
           echo "Verifying Trainer installation..."
           kubectl get deployment -n kubeflow-system
           kubectl get pods -n kubeflow-system
+
+          # Verify runtimes are installed
+          echo "Verifying ClusterTrainingRuntimes..."
+          kubectl get clustertrainingruntimes
 
       # --- Test Environment Setup ---
       - name: Set up Python 3.9
