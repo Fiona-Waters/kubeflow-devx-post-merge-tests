@@ -18,13 +18,43 @@ jobs:
           ref: ${{ github.event.client_payload.sdk_sha }}
           path: sdk-repo # Checkout the SDK code into a subdirectory
 
-      - name: Checkout Training Operator Repo (Test Asset)
+      - name: Checkout Trainer Repo (Test Asset)
         uses: actions/checkout@v4
         with:
           repository: opendatahub-io/trainer
           ref: main
-          path: training-operator-repo # Checkout the Training Operator code into a subdirectory
-          
+          path: trainer-repo # Checkout the Trainer code into a subdirectory
+
+      # --- Kubernetes Cluster Setup ---
+      - name: Set up Kind Kubernetes Cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: kubeflow-test
+          wait: 300s
+
+      - name: Verify Kind Cluster
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+          kubectl get pods -A
+
+      - name: Install Kubeflow Trainer
+        run: |
+          echo "Installing Kubeflow Trainer..."
+
+          # Install the Trainer using kubectl
+          kubectl apply -k "github.com/opendatahub-io/trainer/manifests/overlays/standalone"
+
+          # Wait for the Trainer deployment to be ready
+          echo "Waiting for Trainer to be ready..."
+          kubectl wait --for=condition=available --timeout=300s \
+            deployment/training-operator -n kubeflow
+
+          # Verify installation
+          echo "Verifying Trainer installation..."
+          kubectl get deployment -n kubeflow
+          kubectl get pods -n kubeflow
+
       # --- Test Environment Setup ---
       - name: Set up Python 3.9
         uses: actions/setup-python@v6
@@ -56,38 +86,56 @@ jobs:
           PYTHON_BIN=$(which python)
           $PYTHON_BIN -m ipykernel install --user --name=sdk-test-kernel --display-name "Python (SDK Test)"
           
-          cd .. 
+          cd ..
           mkdir -p artifacts/notebooks # Create artifact directory
 
-      - name: Run E2E Notebook Test with Papermill (Local)
+      - name: Configure Kubernetes Access
+        run: |
+          # Ensure kubeconfig is accessible
+          mkdir -p ~/.kube
+          kind get kubeconfig --name kubeflow-test > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+          # Verify access
+          kubectl get nodes
+          kubectl get namespaces
+
+      - name: Run E2E Notebook Test with Papermill (Kubernetes)
         id: run-test
-        env:
-          # Force local execution and disable Kubernetes autodetection
-          TRAINER_BACKEND: local
-          KUBERNETES_SERVICE_HOST: ""
         run: |
           # Use the python executable where Papermill was installed
           PAPERMILL_BIN=$(which papermill)
           echo "Using Papermill from: $PAPERMILL_BIN"
 
           # Set the notebook paths
-          NOTEBOOK_INPUT="training-operator-repo/examples/pytorch/image-classification/mnist.ipynb"
-          NOTEBOOK_OUTPUT="artifacts/notebooks/sdk-pr-test-output.ipynb"
-          TIMEOUT_SECONDS=900 
+          NOTEBOOK_INPUT="trainer-repo/examples/pytorch/image-classification/mnist.ipynb"
+          NOTEBOOK_OUTPUT="artifacts/notebooks/sdk-pr-test-output.ipynb" 
 
           echo "Executing notebook: $NOTEBOOK_INPUT"
 
           # Ensure the output directory exists
           mkdir -p "$(dirname "$NOTEBOOK_OUTPUT")"
 
-          # Execute the notebook using Papermill in local mode
+          # Execute the notebook using Papermill with Kubernetes backend
           $PAPERMILL_BIN "$NOTEBOOK_INPUT" "$NOTEBOOK_OUTPUT" \
             --kernel "sdk-test-kernel" \
             --log-output \
             --log-level INFO
 
-          echo " Notebook test execution finished successfully."
+          echo "Notebook test execution finished successfully."
 
+      - name: Debug - Show Training Jobs
+        if: always()
+        run: |
+          echo "Checking for TrainJobs in all namespaces..."
+          kubectl get trainjobs -A || echo "No TrainJobs found or CRD not installed"
+          kubectl get pytorchjobs -A || echo "No PyTorchJobs found or CRD not installed"
+
+          echo "Checking pods in default namespace..."
+          kubectl get pods -n default
+
+          echo "Checking events..."
+          kubectl get events -n default --sort-by='.lastTimestamp'
 
       - name: Upload Executed Notebook Artifact
         uses: actions/upload-artifact@v5
@@ -96,3 +144,8 @@ jobs:
           name: sdk-pr-notebook-result-${{ github.event.client_payload.sdk_sha }}
           path: artifacts/notebooks/sdk-pr-test-output.ipynb
           retention-days: 1
+
+      - name: Cleanup Kind Cluster
+        if: always()
+        run: |
+          kind delete cluster --name kubeflow-test || true
