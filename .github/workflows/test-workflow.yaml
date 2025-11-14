@@ -62,14 +62,18 @@ jobs:
           # Install the Trainer manager using kubectl with server-side apply to handle large CRDs
           kubectl apply --server-side -k "github.com/kubeflow/trainer/manifests/overlays/manager?ref=master"
 
+          # Wait for the trainer deployment to be ready
+          echo "Waiting for Trainer controller to be ready..."
+          kubectl wait --for=condition=available --timeout=300s \
+            deployment/kubeflow-trainer-controller-manager -n kubeflow-system
+
+          # Wait a bit more for webhooks to be fully ready
+          echo "Waiting for webhooks to be ready..."
+          sleep 30
+
           # Install the default training runtimes
           echo "Installing Trainer runtimes..."
           kubectl apply --server-side -k "github.com/kubeflow/trainer/manifests/overlays/runtimes?ref=master"
-
-          # Wait for the trainer deployment to be ready
-          echo "Waiting for Trainer to be ready..."
-          kubectl wait --for=condition=available --timeout=300s \
-            deployment/kubeflow-trainer-controller-manager -n kubeflow-system
 
           # Verify installation
           echo "Verifying Trainer installation..."
