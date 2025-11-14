@@ -158,7 +158,6 @@ jobs:
         run: |
           echo "Checking for TrainJobs in all namespaces..."
           kubectl get trainjobs -A || echo "No TrainJobs found or CRD not installed"
-          kubectl get pytorchjobs -A || echo "No PyTorchJobs found or CRD not installed"
 
           echo "Checking pods in default namespace..."
           kubectl get pods -n default
