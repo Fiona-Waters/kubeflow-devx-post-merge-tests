@@ -42,18 +42,18 @@ jobs:
         run: |
           echo "Installing Kubeflow Trainer..."
 
-          # Install the Trainer using kubectl from manager overlay
-          kubectl apply -k "github.com/kubeflow/trainer/manifests/overlays/manager?ref=master"
+          # Install the Trainer using kubectl with server-side apply to handle large CRDs
+          kubectl apply --server-side -k "github.com/kubeflow/trainer/manifests/overlays/manager?ref=master"
 
           # Wait for the trainer deployment to be ready
           echo "Waiting for Trainer to be ready..."
           kubectl wait --for=condition=available --timeout=300s \
-            deployment/trainer -n kubeflow
+            deployment/kubeflow-trainer-controller-manager -n kubeflow-system
 
           # Verify installation
           echo "Verifying Trainer installation..."
-          kubectl get deployment -n kubeflow
-          kubectl get pods -n kubeflow
+          kubectl get deployment -n kubeflow-system
+          kubectl get pods -n kubeflow-system
 
       # --- Test Environment Setup ---
       - name: Set up Python 3.9
