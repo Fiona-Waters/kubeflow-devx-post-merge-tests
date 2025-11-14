@@ -42,8 +42,8 @@ jobs:
         run: |
           echo "Installing Kubeflow Trainer..."
 
-          # Install the Trainer using kubectl from base manifests
-          kubectl apply -k "github.com/kubeflow/trainer/manifests/base?ref=master"
+          # Install the Trainer using kubectl from manager overlay
+          kubectl apply -k "github.com/kubeflow/trainer/manifests/overlays/manager?ref=master"
 
           # Wait for the trainer deployment to be ready
           echo "Waiting for Trainer to be ready..."
