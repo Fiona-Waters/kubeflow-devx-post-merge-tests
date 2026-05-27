@@ -82,7 +82,7 @@ jobs:
           
           # 2. Install main dependencies (Manually listed from pyproject.toml [project.dependencies])
           echo "Installing main SDK dependencies..."
-          pip install kubernetes>=27.2.0 pydantic>=2.10.0 kubeflow-trainer-api>=2.0.0 kubeflow-katib-api>=0.19.0
+          pip install kubernetes>=27.2.0,<35.0.0 pydantic>=2.10.0 kubeflow-trainer-api>=2.0.0 kubeflow-katib-api>=0.19.0
 
           # 3. Install the SDK Code itself in editable mode
           cd sdk-repo
